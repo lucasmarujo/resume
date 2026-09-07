@@ -5,8 +5,8 @@ on:
     branches: [master]
     paths:
       - 'resume-ptbr.tex'
+      - 'resume-en.tex'
       - 'preamble.tex'
-      - 'scripts/translate.py'
       - '.github/workflows/resume.yml'
   workflow_dispatch:
 
@@ -27,16 +27,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Instala dependencias
-        run: pip install anthropic
-
       - name: Valida o tradutor
         run: python scripts/translate.py --selftest
-
-      - name: Traduz PT-BR para EN
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python scripts/translate.py
 
       - name: Compila os PDFs
         uses: xu-cheng/latex-action@v3
@@ -44,16 +36,6 @@ jobs:
           root_file: |
             resume-ptbr.tex
             resume-en.tex
-
-      - name: Sincroniza resume-en.tex
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add resume-en.tex
-          git diff --staged --quiet || {
-            git commit -m "chore: sincroniza resume-en.tex a partir do PT-BR"
-            git push
-          }
 
       - uses: actions/upload-artifact@v4
         with:

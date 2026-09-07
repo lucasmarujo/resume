@@ -1,0 +1,28 @@
+#!/bin/sh
+# Mantem resume-en.tex sincronizado com o PT-BR.
+#
+# Quando resume-ptbr.tex ou preamble.tex entram no commit, regenera a versao em
+# ingles e a inclui no mesmo commit. A traducao usa a assinatura ja autenticada
+# na maquina (claude auth login) -- nenhuma chave de API envolvida.
+#
+# Instalado por: git config core.hooksPath .githooks
+set -e
+
+alterados=$(git diff --cached --name-only --diff-filter=ACM)
+case "$alterados" in
+    *resume-ptbr.tex*|*preamble.tex*) ;;
+    *) exit 0 ;;
+esac
+
+if command -v python >/dev/null 2>&1; then
+    py=python
+elif command -v python3 >/dev/null 2>&1; then
+    py=python3
+else
+    echo "pre-commit: python nao encontrado no PATH" >&2
+    exit 1
+fi
+
+echo "pre-commit: PT-BR alterado, regenerando resume-en.tex..."
+"$py" scripts/translate.py
+git add resume-en.tex

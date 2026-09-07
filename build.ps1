@@ -4,7 +4,7 @@
 .DESCRIPTION
     .\build.ps1              compila resume-ptbr.tex e resume-en.tex
     .\build.ps1 -Translate   regenera resume-en.tex a partir do PT-BR antes de compilar
-                             (requer $env:ANTHROPIC_API_KEY)
+                             (usa a assinatura autenticada via claude auth login)
 #>
 param([switch]$Translate)
 

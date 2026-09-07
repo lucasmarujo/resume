@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 """Gera resume-en.tex a partir de resume-ptbr.tex, a fonte da verdade.
 
-Traduz apenas o corpo do documento (entre \\begin{document} e \\end{document});
-o preambulo fica em preamble.tex e nunca passa pelo modelo. Antes de escrever,
-valida que a sequencia de comandos LaTeX do corpo traduzido e identica a do
-original -- se nao for, nada e escrito.
+Usa o CLI do Claude Code em modo -p, que autentica pela assinatura ja logada
+na maquina -- nao precisa de chave de API. Traduz apenas o corpo do documento
+(entre \\begin{document} e \\end{document}); o preambulo fica em preamble.tex e
+nunca passa pelo modelo. Antes de escrever, valida que a sequencia de comandos
+LaTeX do corpo traduzido e identica a do original -- se nao for, nada e escrito.
 
 Uso:
     python scripts/translate.py              gera resume-en.tex
-    python scripts/translate.py --selftest   roda os asserts, sem chamar a API
+    python scripts/translate.py --selftest   roda os asserts, sem chamar o modelo
 """
 
-import os
 import pathlib
 import re
+import shutil
+import subprocess
 import sys
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 ORIGEM = RAIZ / "resume-ptbr.tex"
 DESTINO = RAIZ / "resume-en.tex"
 
-MODELO = "claude-opus-5"
 MARCA_INICIO = r"\begin{document}"
 MARCA_FIM = r"\end{document}"
+TIMEOUT = 600
 
 CABECALHO = (
     "% GERADO AUTOMATICAMENTE a partir de resume-ptbr.tex -- nao edite a mao.\n"
-    "% Qualquer alteracao aqui e sobrescrita pelo workflow .github/workflows/resume.yml\n"
+    "% Regenerado pelo hook de pre-commit em .githooks/pre-commit\n"
 )
 
 SYSTEM = r"""Voce traduz o corpo de um curriculo em LaTeX de portugues brasileiro para ingles.
@@ -78,6 +80,18 @@ Implemented, Migrated). Prefira a formulacao que um engenheiro nativo escreveria
 traducao fiel ao portugues. Mantenha o comprimento de cada bullet proximo do original
 para nao quebrar a paginacao."""
 
+# --system-prompt substitui o prompt padrao do Claude Code, o que mantem o CLAUDE.md
+# global fora da traducao; --setting-sources project isola hooks e plugins do usuario.
+ARGUMENTOS = [
+    "-p",
+    "--model", "opus",
+    "--effort", "low",
+    "--restricted",
+    "--strict-mcp-config",
+    "--setting-sources", "project",
+    "--system-prompt", SYSTEM,
+]
+
 
 def extrair_corpo(tex):
     """Retorna o trecho entre \\begin{document} e \\end{document}."""
@@ -92,15 +106,13 @@ def comandos(tex):
 
 
 def limpar_cerca(texto):
-    """Remove cerca markdown que o modelo eventualmente adicione."""
-    texto = texto.strip()
-    if texto.startswith("```"):
-        linhas = texto.split("\n")
-        linhas = linhas[1:]
+    """Remove cerca markdown e linhas em branco ao redor, preservando a indentacao."""
+    if texto.lstrip().startswith("```"):
+        linhas = texto.lstrip().split("\n")[1:]
         if linhas and linhas[-1].strip() == "```":
             linhas = linhas[:-1]
         texto = "\n".join(linhas)
-    return texto
+    return texto.strip("\n").rstrip()
 
 
 def divergencia(cmd_pt, cmd_en):
@@ -118,7 +130,12 @@ def divergencia(cmd_pt, cmd_en):
 
 
 def traduzir(corpo_pt, feedback=None):
-    import anthropic
+    executavel = shutil.which("claude")
+    if not executavel:
+        sys.exit(
+            "CLI do Claude Code nao encontrado no PATH.\n"
+            "  instale em https://claude.com/claude-code e rode 'claude auth login'"
+        )
 
     conteudo = corpo_pt
     if feedback:
@@ -128,25 +145,23 @@ def traduzir(corpo_pt, feedback=None):
             "Refaca a traducao preservando exatamente a mesma sequencia de comandos."
         )
 
-    resposta = anthropic.Anthropic().messages.create(
-        model=MODELO,
-        max_tokens=16000,
-        output_config={"effort": "low"},
-        system=SYSTEM,
-        messages=[{"role": "user", "content": conteudo}],
+    r = subprocess.run(
+        [executavel, *ARGUMENTOS],
+        input=conteudo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=TIMEOUT,
     )
-    texto = "".join(b.text for b in resposta.content if b.type == "text")
-    return limpar_cerca(texto)
+    if r.returncode != 0 or not r.stdout.strip():
+        detalhe = (r.stderr or r.stdout or "").strip()[:400]
+        if "not logged in" in detalhe.lower():
+            sys.exit("assinatura nao autenticada; rode 'claude auth login'.")
+        sys.exit(f"o CLI do Claude falhou (codigo {r.returncode}): {detalhe}")
+    return limpar_cerca(r.stdout)
 
 
 def main():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit(
-            "ANTHROPIC_API_KEY nao configurado.\n"
-            "  CI:    cadastre o secret em Settings > Secrets and variables > Actions\n"
-            '  local: $env:ANTHROPIC_API_KEY = "sk-ant-..."'
-        )
-
     corpo_pt = extrair_corpo(ORIGEM.read_text(encoding="utf-8"))
     cmd_pt = comandos(corpo_pt)
 
@@ -162,7 +177,7 @@ def main():
 
     saida = (
         f"{CABECALHO}\\input{{preamble}}\n\n"
-        f"% Begin document\n{MARCA_INICIO}{corpo_en}{MARCA_FIM}\n"
+        f"% Begin document\n{MARCA_INICIO}\n{corpo_en}\n\n{MARCA_FIM}\n"
     )
     DESTINO.write_text(saida, encoding="utf-8", newline="\n")
     print(f"resume-en.tex gerado ({len(cmd_pt)} comandos LaTeX preservados).")
@@ -176,7 +191,7 @@ def _selftest():
     assert comandos("sem comando algum") == []
 
     assert limpar_cerca("```latex\n\\item a\n```") == "\\item a"
-    assert limpar_cerca("  \\item a  ") == "\\item a"
+    assert limpar_cerca("\n\n    \\item a  \n\n") == "    \\item a"
 
     assert divergencia(["\\item", "\\textbf"], ["\\item", "\\textbf"]) is None
     assert "esperado" in divergencia(["\\item", "\\textbf"], ["\\item", "\\emph"])
@@ -184,6 +199,9 @@ def _selftest():
 
     corpo = extrair_corpo(ORIGEM.read_text(encoding="utf-8"))
     assert comandos(corpo), "o corpo do resume-ptbr.tex nao tem comando LaTeX algum"
+
+    assert "--system-prompt" in ARGUMENTOS, "o prompt padrao precisa ser substituido"
+    assert "--setting-sources" in ARGUMENTOS, "hooks e plugins precisam ficar isolados"
 
     print("selftest ok")
 

@@ -15,24 +15,36 @@ Os links acima apontam sempre para a versão mais recente.
 
 **`resume-ptbr.tex` é a única fonte da verdade.** Edite apenas ele.
 
-A cada push que altere o PT-BR, o workflow [`resume.yml`](.github/workflows/resume.yml):
+**No commit**, o hook [`pre-commit`](.githooks/pre-commit) detecta que o PT-BR mudou,
+regenera o `resume-en.tex` e o inclui no mesmo commit. A tradução usa o CLI do Claude
+Code com a **assinatura já autenticada na máquina** — nenhuma chave de API envolvida.
 
-1. traduz o corpo do documento para inglês com `claude-opus-5` e reescreve `resume-en.tex`;
-2. valida que a sequência de comandos LaTeX do EN é idêntica à do PT-BR — se divergir, tenta de novo e, falhando, aborta sem escrever nada;
-3. compila os dois PDFs (uma falha aqui impede o commit de LaTeX quebrado);
-4. commita o `resume-en.tex` sincronizado;
-5. publica os PDFs na release `latest` e como artifact da execução.
+Antes de escrever, o script confere que a sequência de comandos LaTeX do EN é idêntica
+à do PT-BR. Se divergir, tenta de novo; falhando, aborta o commit sem escrever nada.
 
-> ⚠️ `resume-en.tex` é **gerado**. Qualquer edição manual nele é sobrescrita no próximo push.
+**No push**, o workflow [`resume.yml`](.github/workflows/resume.yml) compila os dois
+PDFs e publica na release `latest` e como artifact da execução.
+
+> ⚠️ `resume-en.tex` é **gerado**. Qualquer edição manual nele é sobrescrita no próximo commit que toque o PT-BR.
+
+## Setup (uma vez por clone)
+
+```powershell
+git config core.hooksPath .githooks
+claude auth login          # se ainda não estiver logado
+```
+
+Confira com `claude auth status` — precisa mostrar `"loggedIn": true`.
 
 ## Estrutura
 
 ```
-preamble.tex          macros e pacotes, compartilhados pelos dois documentos
-resume-ptbr.tex       fonte da verdade — editar aqui
-resume-en.tex         gerado a partir do PT-BR
-scripts/translate.py  tradução + validação estrutural
-build.ps1             build local
+preamble.tex           macros e pacotes, compartilhados pelos dois documentos
+resume-ptbr.tex        fonte da verdade — editar aqui
+resume-en.tex          gerado a partir do PT-BR
+scripts/translate.py   tradução + validação estrutural
+.githooks/pre-commit   dispara a tradução no commit
+build.ps1              build local dos PDFs
 ```
 
 ## Build local
@@ -44,19 +56,14 @@ Requer MiKTeX (ou TeX Live) com `latexmk` no PATH.
 .\build.ps1 -Translate   # regenera o EN antes de compilar
 ```
 
-O `-Translate` precisa da chave da API:
-
-```powershell
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-```
-
-Para checar o tradutor sem gastar chamada de API:
+Para checar o tradutor sem chamar o modelo:
 
 ```powershell
 python scripts/translate.py --selftest
 ```
 
-## Configuração do repositório
+## Limitação conhecida
 
-O workflow depende do secret **`ANTHROPIC_API_KEY`**, cadastrado em
-_Settings → Secrets and variables → Actions_. Sem ele o job falha com mensagem explícita.
+A tradução roda no hook local. Um commit feito com `--no-verify`, ou de uma máquina sem
+o hook instalado e sem `claude` autenticado, deixa o `resume-en.tex` defasado sem avisar.
+Nesse caso, rode `python scripts/translate.py` e commite o resultado.
