@@ -4,12 +4,18 @@ Currículo em LaTeX com versão em inglês gerada automaticamente.
 
 ## Download
 
-| | |
-|---|---|
-| 🇧🇷 Português | [resume-ptbr.pdf](https://github.com/lucasmarujo/resume/releases/latest/download/resume-ptbr.pdf) |
-| 🇺🇸 English | [resume-en.pdf](https://github.com/lucasmarujo/resume/releases/latest/download/resume-en.pdf) |
+A cada push, os PDFs em português e inglês são publicados na release
+[`latest`](https://github.com/lucasmarujo/resume/releases/tag/latest) e também ficam
+disponíveis como artifact da execução em _Actions_.
 
-Os links acima apontam sempre para a versão mais recente.
+> ⚠️ Este repositório é **privado**, então os links de download exigem acesso a ele.
+> Para enviar o currículo a alguém, baixe o PDF e anexe.
+
+Pela linha de comando:
+
+```powershell
+gh release download latest -D .
+```
 
 ## Como funciona
 
