@@ -8,7 +8,9 @@
 #>
 param([switch]$Translate)
 
-$ErrorActionPreference = "Stop"
+# No PowerShell 5.1, "Stop" promove stderr de executavel nativo a erro terminante e o
+# MiKTeX escreve avisos de update no stderr. O gate real sao os testes de $LASTEXITCODE.
+$ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 
 if ($Translate) {
